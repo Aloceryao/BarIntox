@@ -1192,6 +1192,7 @@ function MainAppContent() {
       if (type === 'ingredient') {
         setEditingItem({ id: generateId(), nameZh: '', nameEn: '', type: 'alcohol', price: '', volume: 700, abv: 0, unit: 'ml' });
       } else {
+        // 確保新酒譜預設為 classic，並且 tags 是空陣列
         setEditingItem({ id: generateId(), nameZh: '', nameEn: '', type: 'classic', technique: '', tags: [], method: '', glass: '', customPrice: '', allergens: '', ingredients: [], history: [], image: '', baseSpirit: '', flavorDescription: '' });
       }
     }
@@ -1273,7 +1274,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.1</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.2</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer"><Upload className="text-emerald-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯入數據</div><div className="text-xs text-slate-500">從 JSON 還原</div></div><input type="file" className="hidden" accept=".json" onChange={(e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = (ev) => { const data = JSON.parse(ev.target.result); setIngredients(data.ingredients); setRecipes(data.recipes); showAlert('成功', '資料還原完成'); }; reader.readAsText(file); }}/></label>
