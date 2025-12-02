@@ -25,11 +25,10 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus,
-  FileWarning
+  FilePlus
 } from 'lucide-react';
 
-// --- Constants & Data ---
+// --- 1. Constants & Helper Functions ---
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const formatDate = (dateString) => {
@@ -38,7 +37,6 @@ const formatDate = (dateString) => {
 };
 
 const TARGET_COST_RATE = 0.25;
-
 const DEFAULT_TECHNIQUES = ['直調', '搖盪', '攪拌', '滾動', '攪打', '分層'];
 const DEFAULT_TAGS = ['酸', '甜', '苦', '辣', '氣泡', '清爽', '重酒感', '果香', '花香', '煙燻', '草本', '木質', '奶油', '咖啡', '茶香'];
 const DEFAULT_GLASSES = ['Highball (高球杯)', 'Rock (古典杯)', 'Martini (馬丁尼杯)', 'Coupe (寬口香檳杯)', 'Collins (柯林斯杯)', 'Shot (一口杯)', 'Flute (香檳杯)', 'Tiki (提基杯)', 'Mug (馬克杯)'];
@@ -50,8 +48,6 @@ const DEFAULT_ING_CATEGORIES = [
   { id: 'soft', label: '軟飲' },
   { id: 'other', label: '其他' }
 ];
-
-// --- Helper Functions ---
 
 const calculateRecipeStats = (recipe, ingredients) => {
   let totalCost = 0;
@@ -72,11 +68,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
     });
   }
 
-  const techLower = recipe.technique ? recipe.technique.toLowerCase() : '';
-  const dilution = techLower.includes('stir') || techLower.includes('攪拌') ? 20 : 
-                   techLower.includes('shake') || techLower.includes('搖盪') ? 30 : 0; 
-  
-  const finalVol = totalVol + dilution;
+  const finalVol = totalVol;
   const finalAbv = finalVol > 0 ? (totalAlcoholVol / finalVol) * 100 : 0;
   const suggestedPrice = totalCost > 0 ? Math.ceil(totalCost / TARGET_COST_RATE / 10) * 10 : 0;
   const price = recipe.customPrice || suggestedPrice;
@@ -86,10 +78,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
   return { totalCost, finalAbv, suggestedPrice, costRate, margin, finalVol, price };
 };
 
-// Helper to normalize strings for comparison (remove spaces, lowercase)
-const normalizeStr = (str) => str ? str.toLowerCase().replace(/\s+/g, '') : '';
-
-// --- UI Components ---
+// --- 2. UI Components ---
 
 const Badge = ({ children, color = "slate", className="" }) => {
   const colors = {
@@ -172,7 +161,7 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
   );
 };
 
-// --- Sub-Screens ---
+// --- 3. Screen Components ---
 
 const SingleItemScreen = ({ ingredients, searchTerm }) => {
   const singles = ingredients.filter(i => 
@@ -354,7 +343,6 @@ const RecipeListScreen = ({
                         </div>
                         <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{recipe.nameEn}</p>
                         
-                        {/* Flavor Description Preview */}
                         {recipe.flavorDescription && (
                           <div className="text-[10px] text-slate-500 line-clamp-1 italic mb-1.5 opacity-80">
                             "{recipe.flavorDescription}"
@@ -1004,7 +992,7 @@ const EditorSheet = ({
   );
 };
 
-// --- Viewer Overlay ---
+// --- Viewer Overlay (Same as before) ---
 const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete }) => {
   if (!item) return null;
   const stats = calculateRecipeStats(item, ingredients);
@@ -1226,13 +1214,10 @@ function MainAppContent() {
           setRecipes(data.recipes || []);
           showAlert('還原成功', '資料已完全覆蓋');
         } else {
-          // Smart Merge with Name Matching
           setIngredients(prev => {
             const newItems = (data.ingredients || []).filter(newI => {
-              // 1. Check ID conflict
               const idExists = prev.some(oldI => oldI.id === newI.id);
-              // 2. Check Name conflict (Smart Match)
-              const nameExists = prev.some(oldI => normalizeStr(oldI.nameZh) === normalizeStr(newI.nameZh) || (oldI.nameEn && normalizeStr(oldI.nameEn) === normalizeStr(newI.nameEn)));
+              const nameExists = prev.some(oldI => (oldI.nameZh && newI.nameZh && oldI.nameZh.replace(/\s+/g, '') === newI.nameZh.replace(/\s+/g, '')));
               return !idExists && !nameExists;
             });
             return [...prev, ...newItems];
@@ -1240,7 +1225,7 @@ function MainAppContent() {
           setRecipes(prev => {
             const newItems = (data.recipes || []).filter(newI => {
               const idExists = prev.some(oldI => oldI.id === newI.id);
-              const nameExists = prev.some(oldI => normalizeStr(oldI.nameZh) === normalizeStr(newI.nameZh));
+              const nameExists = prev.some(oldI => (oldI.nameZh && newI.nameZh && oldI.nameZh.replace(/\s+/g, '') === newI.nameZh.replace(/\s+/g, '')));
               return !idExists && !nameExists;
             });
             return [...prev, ...newItems];
@@ -1346,7 +1331,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.6</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.7</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              
