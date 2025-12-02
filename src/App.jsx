@@ -25,7 +25,7 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus
+  FilePlus // Added FilePlus to imports
 } from 'lucide-react';
 
 // ==========================================
@@ -51,12 +51,13 @@ const DEFAULT_ING_CATEGORIES = [
   { id: 'other', label: '其他' }
 ];
 
+// 酒精濃度與成本計算核心 (已移除融水機制)
 const calculateRecipeStats = (recipe, ingredients) => {
   let totalCost = 0;
   let totalVol = 0;
   let totalAlcoholVol = 0;
 
-  if (recipe.ingredients) {
+  if (recipe && recipe.ingredients && Array.isArray(recipe.ingredients)) {
     recipe.ingredients.forEach(item => {
       const ing = ingredients.find(i => i.id === item.id);
       if (ing) {
@@ -65,13 +66,12 @@ const calculateRecipeStats = (recipe, ingredients) => {
         
         totalCost += costPerUnit * amount;
         
-        // Logic for liquid volume calculation
-        // We assume 'other' type or solid units (g, kg, 顆, 片) don't contribute to liquid volume/ABV
-        // Unless the unit is explicitly ml or oz, or undefined (legacy data assumed ml)
+        // 只有單位是 ml/oz 且非"其他"類別，才計算體積與酒精
+        // 這裡假設 unit 不存在時預設為 ml
         const isLiquid = ing.type !== 'other' && (!ing.unit || ing.unit === 'ml' || ing.unit === 'oz');
         
         if (isLiquid) {
-          // Convert oz to ml for calculation roughly
+          // 簡單處理: 假設 oz = 30ml (粗略), 若系統統一用 ml 則直接加
           const volInMl = ing.unit === 'oz' ? amount * 30 : amount;
           totalVol += volInMl;
           totalAlcoholVol += volInMl * (ing.abv / 100);
@@ -80,10 +80,10 @@ const calculateRecipeStats = (recipe, ingredients) => {
     });
   }
 
-  // Final Volume is just the sum of ingredients (No dilution added)
+  // 修正：直接使用原始體積，不加融水
   const finalVol = totalVol; 
   
-  // Avoid division by zero
+  // 避免除以零
   const finalAbv = finalVol > 0 ? (totalAlcoholVol / finalVol) * 100 : 0;
   
   const suggestedPrice = totalCost > 0 ? Math.ceil(totalCost / TARGET_COST_RATE / 10) * 10 : 0;
@@ -95,7 +95,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
 };
 
 // ==========================================
-// 2. UI Components (Badge, ChipSelector)
+// 2. Small UI Components
 // ==========================================
 
 const Badge = ({ children, color = "slate", className="" }) => {
@@ -158,7 +158,7 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
                 : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
             }`}
           >
-            {opt.split(' (')[0]}
+            {typeof opt === 'string' ? opt.split(' (')[0] : opt}
             {isSelected(opt) && <Check size={12} className="inline ml-1" />}
           </button>
         ))}
@@ -180,7 +180,7 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
 };
 
 // ==========================================
-// 3. Sub-Screen Components
+// 3. Screen Components
 // ==========================================
 
 const SingleItemScreen = ({ ingredients, searchTerm }) => {
@@ -574,17 +574,27 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
 };
 
 const QuickCalcScreen = ({ ingredients }) => {
-  const [mode, setMode] = useState('single'); 
+  const [mode, setMode] = useState('single'); // 'single' or 'draft'
+  
+  // Single Mode State
   const [p, setP] = useState('');
-  const [v, setV] = useState(700); 
+  const [v, setV] = useState(700); // 預設 700ml
+  
+  // Cost Rate Settings
   const [rateA, setRateA] = useState(25);
   const [rateB, setRateB] = useState(30);
+  
+  // Draft Mode State
   const [draftIngs, setDraftIngs] = useState([]);
   const [ingSearch, setIngSearch] = useState('');
   
+  // --- Single Calculations ---
+  // 使用 parseFloat 確保字串被正確轉換為數字
   const priceNum = parseFloat(p) || 0;
   const volNum = parseFloat(v) || 700;
   const costPerMl = priceNum / volNum;
+
+  // --- Draft Calculations ---
   const draftStats = calculateRecipeStats({ ingredients: draftIngs }, ingredients);
 
   return (
@@ -872,11 +882,11 @@ const EditorSheet = ({
 
         <div className="space-y-4">
            <div>
-             <label className="text-xs text-slate-500 font-bold uppercase ml-1 select-none">中文名稱</label>
+             <label className="text-xs text-slate-500 font-bold uppercase ml-1">中文名稱</label>
              <input value={item.nameZh} onChange={e => setItem({...item, nameZh: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-xl text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none" placeholder="例如: 內格羅尼" />
            </div>
            <div>
-             <label className="text-xs text-slate-500 font-bold uppercase ml-1 select-none">英文名稱</label>
+             <label className="text-xs text-slate-500 font-bold uppercase ml-1">英文名稱</label>
              <input value={item.nameEn} onChange={e => setItem({...item, nameEn: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-lg text-slate-400 placeholder-slate-700 focus:border-slate-500 focus:outline-none font-serif italic" placeholder="e.g. Negroni" />
            </div>
         </div>
@@ -885,28 +895,28 @@ const EditorSheet = ({
           <div className="bg-slate-900 p-4 rounded-xl space-y-4 border border-slate-800">
              <div className="flex gap-4">
                <div className="flex-1">
-                 <label className="text-xs text-slate-500 mb-1 block select-none">價格</label>
+                 <label className="text-xs text-slate-500 mb-1 block">價格</label>
                  <input type="number" value={item.price} onChange={e => setItem({...item, price: e.target.value})} className="w-full bg-slate-800 rounded p-2 text-white border border-slate-700"/>
                </div>
                <div className="flex-1">
-                 <label className="text-xs text-slate-500 mb-1 block select-none">容量/數量</label>
+                 <label className="text-xs text-slate-500 mb-1 block">容量/數量</label>
                  <input type="number" value={item.volume} onChange={e => setItem({...item, volume: e.target.value})} className="w-full bg-slate-800 rounded p-2 text-white border border-slate-700"/>
                </div>
              </div>
              <div className="flex gap-4">
                 <div className="flex-1">
-                   <label className="text-xs text-slate-500 mb-1 block select-none">單位 (Unit)</label>
+                   <label className="text-xs text-slate-500 mb-1 block">單位 (Unit)</label>
                    <select value={item.unit || 'ml'} onChange={e => setItem({...item, unit: e.target.value})} className="w-full bg-slate-800 rounded p-2 text-white border border-slate-700">
                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                    </select>
                 </div>
                 <div className="flex-1">
-                   <label className="text-xs text-slate-500 mb-1 block select-none">酒精 %</label>
+                   <label className="text-xs text-slate-500 mb-1 block">酒精 %</label>
                    <input type="number" value={item.abv} onChange={e => setItem({...item, abv: e.target.value})} className="w-full bg-slate-800 rounded p-2 text-white border border-slate-700"/>
                 </div>
              </div>
              <div className="mt-2">
-                 <label className="text-xs text-slate-500 mb-1 block select-none">分類</label>
+                 <label className="text-xs text-slate-500 mb-1 block">分類</label>
                  <div className="flex gap-2">
                    <select value={item.type} onChange={e => setItem({...item, type: e.target.value})} className="flex-1 bg-slate-800 rounded p-2 text-white border border-slate-700">
                      {ingCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}
@@ -922,10 +932,10 @@ const EditorSheet = ({
                  </div>
              </div>
              
-             {/* 酒類細項 */}
+             {/* --- 這裡新增了 酒類專屬細項選擇器 --- */}
              {item.type === 'alcohol' && (
                  <div className="mt-2">
-                    <label className="text-xs text-slate-500 mb-1 block select-none">酒類細項 (Sub-category)</label>
+                    <label className="text-xs text-slate-500 mb-1 block">酒類細項 (Sub-category)</label>
                     <select 
                         value={item.subType || ''} 
                         onChange={e => setItem({...item, subType: e.target.value})}
@@ -949,7 +959,7 @@ const EditorSheet = ({
                      checked={item.isSingle !== false}
                      onChange={e => setItem({...item, isSingle: e.target.checked})}
                    />
-                   <span className="text-sm text-slate-300 group-hover:text-white select-none">列入單品菜單 (Available as Single)</span>
+                   <span className="text-sm text-slate-300 group-hover:text-white">列入單品菜單 (Available as Single)</span>
                  </label>
                  <p className="text-[10px] text-slate-500 mt-1 ml-8">取消勾選後，此材料將不會出現在「純飲/單品」頁面中。</p>
                </div>
@@ -962,7 +972,7 @@ const EditorSheet = ({
           <>
             <div className="space-y-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
               <div className="space-y-2">
-                <label className="text-xs text-slate-500 font-bold uppercase block mb-2 select-none">酒譜分類 (Category)</label>
+                <label className="text-xs text-slate-500 font-bold uppercase block mb-2">酒譜分類 (Category)</label>
                 <div className="flex gap-2 mb-4">
                   <button 
                     onClick={() => setItem({...item, type: 'classic'})}
@@ -980,14 +990,14 @@ const EditorSheet = ({
               </div>
 
               <div className="mb-4">
-                 <label className="text-xs text-slate-500 font-bold uppercase block mb-2 select-none">基酒 (Base Spirit)</label>
+                 <label className="text-xs text-slate-500 font-bold uppercase block mb-2">基酒 (Base Spirit)</label>
                  <select value={item.baseSpirit || ''} onChange={e => setItem({...item, baseSpirit: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white outline-none">
                    <option value="">選擇基酒...</option>
                    {BASE_SPIRITS.map(base => <option key={base} value={base}>{base}</option>)}
                  </select>
               </div>
               <div>
-                <label className="text-xs text-slate-500 font-bold uppercase ml-1 select-none">風味描述</label>
+                <label className="text-xs text-slate-500 font-bold uppercase ml-1">風味描述</label>
                 <textarea value={item.flavorDescription || ''} onChange={e => setItem({...item, flavorDescription: e.target.value})} className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-300 h-24 focus:border-amber-500 outline-none mt-2" placeholder="例如: 前味帶有柑橘香氣，尾韻回甘..." />
               </div>
               <ChipSelector title="調製手法" options={availableTechniques} selected={item.technique} single={true} onSelect={(val) => setItem({...item, technique: val})} onAdd={(val) => setAvailableTechniques([...availableTechniques, val])} />
@@ -997,7 +1007,7 @@ const EditorSheet = ({
 
             <div>
               <div className="flex justify-between items-end mb-2 border-b border-slate-800 pb-2">
-                <label className="text-sm text-slate-400 font-bold uppercase select-none">配方成分</label>
+                <label className="text-sm text-slate-400 font-bold uppercase">配方成分</label>
                 <div className="text-right">
                   <div className="text-xs text-slate-500">預估成本</div>
                   <div className="text-emerald-400 font-mono">${Math.round(calculateRecipeStats(item, ingredients).totalCost)}</div>
@@ -1019,8 +1029,11 @@ const EditorSheet = ({
                 })}
               </div>
               
+              {/* Ingredient Picker for Draft with Search */}
               <div className="bg-slate-800 rounded-lg border border-slate-700 p-2 mt-2">
-                 <div className="text-xs text-slate-500 mb-2 font-bold uppercase select-none">加入材料</div>
+                 <div className="text-xs text-slate-500 mb-2 font-bold uppercase">加入材料</div>
+                 
+                 {/* Search Input */}
                  <div className="relative mb-2">
                    <Search className="absolute left-2 top-2 text-slate-500 w-4 h-4" />
                    <input 
@@ -1030,9 +1043,19 @@ const EditorSheet = ({
                      onChange={e => setIngSearch(e.target.value)}
                    />
                  </div>
+
                  <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
-                   {ingredients.filter(ing => ing.nameZh.includes(ingSearch) || ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase())).map(ing => (
-                     <button key={ing.id} onClick={() => setItem({...item, ingredients: [...item.ingredients, { id: ing.id, amount: 30 }]})} className="w-full text-left p-2 hover:bg-slate-700 rounded flex justify-between group">
+                   {ingredients
+                     .filter(ing => 
+                        ing.nameZh.includes(ingSearch) || 
+                        ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase())
+                     )
+                     .map(ing => (
+                     <button 
+                       key={ing.id}
+                       onClick={() => setItem({...item, ingredients: [...item.ingredients, { id: ing.id, amount: 30 }]})}
+                       className="w-full text-left p-2 hover:bg-slate-700 rounded flex justify-between group"
+                     >
                        <span className="text-slate-300 text-sm">{ing.nameZh}</span>
                        <Plus size={14} className="text-slate-500 group-hover:text-amber-500" />
                      </button>
@@ -1043,13 +1066,13 @@ const EditorSheet = ({
 
             <div className="grid grid-cols-2 gap-4">
                <div>
-                 <label className="text-xs text-slate-500 block mb-1 select-none">自訂售價</label>
+                 <label className="text-xs text-slate-500 block mb-1">自訂售價</label>
                  <input type="number" placeholder={`建議 $${calculateRecipeStats(item, ingredients).suggestedPrice}`} value={item.customPrice} onChange={e => setItem({...item, customPrice: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white" />
                </div>
             </div>
             
             <div>
-              <label className="text-xs text-slate-500 block mb-1 select-none">製作步驟 / 備註</label>
+              <label className="text-xs text-slate-500 block mb-1">製作步驟 / 備註</label>
               <textarea value={item.method} onChange={e => setItem({...item, method: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded p-3 text-slate-300 h-32 placeholder-slate-600" placeholder="1. 冰鎮酒杯..." />
             </div>
           </>
@@ -1061,6 +1084,7 @@ const EditorSheet = ({
 };
 
 // --- 5. Viewer Overlay ---
+
 const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete }) => {
   if (!item) return null;
   const stats = calculateRecipeStats(item, ingredients);
@@ -1186,7 +1210,9 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
   );
 };
 
-// --- 6. Main App Container ---
+// ==========================================
+// 6. Main App Container
+// ==========================================
 
 function MainAppContent() {
   const [activeTab, setActiveTab] = useState('recipes'); 
@@ -1345,31 +1371,11 @@ function MainAppContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-amber-500/30 w-full overflow-x-hidden">
-      {/* Global Style Overrides to fix Vite Template defaults */}
+      {/* Global Style Overrides */}
       <style>{`
-        :root {
-          font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-          line-height: 1.5;
-          font-weight: 400;
-        }
-        html, body {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 100%;
-          background-color: #020617; /* slate-950 */
-          display: block !important; /* Override flex from template */
-          place-items: unset !important; /* Override center from template */
-          min-width: 0 !important;
-        }
-        #root {
-          max-width: none !important; /* KILL THE RESTRICTION */
-          margin: 0 !important;
-          padding: 0 !important;
-          width: 100% !important;
-          text-align: left !important;
-          display: block !important;
-        }
+        :root { font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif; line-height: 1.5; font-weight: 400; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #020617; display: block !important; place-items: unset !important; min-width: 0 !important; }
+        #root { max-width: none !important; margin: 0 !important; padding: 0 !important; width: 100% !important; text-align: left !important; display: block !important; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -1384,21 +1390,10 @@ function MainAppContent() {
         .pt-safe { padding-top: env(safe-area-inset-top); }
         .mt-safe { margin-top: env(safe-area-inset-top); }
         .pt-safe-offset { padding-top: calc(12px + env(safe-area-inset-top)); }
-        
-        /* --- v7.1 FIX: REMOVE BLUE HIGHLIGHTS & OUTLINES --- */
-        * { 
-          -webkit-tap-highlight-color: transparent !important; 
-        }
-        *:focus { 
-          outline: none !important; 
-          box-shadow: none !important;
-        }
-        /* Custom focus style for inputs only (Amber) */
-        input:focus, select:focus, textarea:focus {
-          border-color: #f59e0b !important; 
-          box-shadow: 0 0 0 1px #f59e0b !important;
-          outline: none !important;
-        }
+        /* Tap Highlight Removal */
+        * { -webkit-tap-highlight-color: transparent !important; }
+        *:focus { outline: none !important; box-shadow: none !important; }
+        input:focus, select:focus, textarea:focus { border-color: #f59e0b !important; box-shadow: 0 0 0 1px #f59e0b !important; outline: none !important; }
       `}</style>
       
       {activeTab === 'recipes' && <RecipeListScreen recipes={recipes} ingredients={ingredients} searchTerm={searchTerm} setSearchTerm={setSearchTerm} recipeCategoryFilter={recipeCategoryFilter} setRecipeCategoryFilter={setRecipeCategoryFilter} startEdit={startEdit} setViewingItem={setViewingItem} availableTags={availableTags} availableBases={BASE_SPIRITS} />}
@@ -1407,12 +1402,12 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.1</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.2</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              
              <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer">
-               <div className="p-2 bg-emerald-900/30 text-emerald-400 rounded-lg"><FilePlus size={24}/></div>
+               <div className="p-2 bg-emerald-900/30 text-emerald-400 rounded-lg"><Plus size={24}/></div>
                <div className="text-left flex-1"><div className="text-emerald-400 font-bold">智慧合併 (Merge)</div><div className="text-xs text-slate-500">保留現有資料，加入新資料</div></div>
                <input type="file" className="hidden" accept=".json" onChange={(e) => handleImport(e, 'merge')}/>
              </label>
