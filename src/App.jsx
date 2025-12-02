@@ -28,7 +28,7 @@ import {
   FilePlus
 } from 'lucide-react';
 
-// --- 1. Constants & Helper Functions ---
+// --- Constants & Data ---
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const formatDate = (dateString) => {
@@ -37,6 +37,7 @@ const formatDate = (dateString) => {
 };
 
 const TARGET_COST_RATE = 0.25;
+
 const DEFAULT_TECHNIQUES = ['直調', '搖盪', '攪拌', '滾動', '攪打', '分層'];
 const DEFAULT_TAGS = ['酸', '甜', '苦', '辣', '氣泡', '清爽', '重酒感', '果香', '花香', '煙燻', '草本', '木質', '奶油', '咖啡', '茶香'];
 const DEFAULT_GLASSES = ['Highball (高球杯)', 'Rock (古典杯)', 'Martini (馬丁尼杯)', 'Coupe (寬口香檳杯)', 'Collins (柯林斯杯)', 'Shot (一口杯)', 'Flute (香檳杯)', 'Tiki (提基杯)', 'Mug (馬克杯)'];
@@ -48,6 +49,8 @@ const DEFAULT_ING_CATEGORIES = [
   { id: 'soft', label: '軟飲' },
   { id: 'other', label: '其他' }
 ];
+
+// --- Helper Functions ---
 
 const calculateRecipeStats = (recipe, ingredients) => {
   let totalCost = 0;
@@ -68,7 +71,11 @@ const calculateRecipeStats = (recipe, ingredients) => {
     });
   }
 
-  const finalVol = totalVol;
+  const techLower = recipe.technique ? recipe.technique.toLowerCase() : '';
+  const dilution = techLower.includes('stir') || techLower.includes('攪拌') ? 20 : 
+                   techLower.includes('shake') || techLower.includes('搖盪') ? 30 : 0; 
+  
+  const finalVol = totalVol + dilution;
   const finalAbv = finalVol > 0 ? (totalAlcoholVol / finalVol) * 100 : 0;
   const suggestedPrice = totalCost > 0 ? Math.ceil(totalCost / TARGET_COST_RATE / 10) * 10 : 0;
   const price = recipe.customPrice || suggestedPrice;
@@ -78,7 +85,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
   return { totalCost, finalAbv, suggestedPrice, costRate, margin, finalVol, price };
 };
 
-// --- 2. UI Components ---
+// --- UI Components ---
 
 const Badge = ({ children, color = "slate", className="" }) => {
   const colors = {
@@ -161,7 +168,7 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
   );
 };
 
-// --- 3. Screen Components ---
+// --- Sub-Screens ---
 
 const SingleItemScreen = ({ ingredients, searchTerm }) => {
   const singles = ingredients.filter(i => 
@@ -343,6 +350,7 @@ const RecipeListScreen = ({
                         </div>
                         <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{recipe.nameEn}</p>
                         
+                        {/* Flavor Description Preview */}
                         {recipe.flavorDescription && (
                           <div className="text-[10px] text-slate-500 line-clamp-1 italic mb-1.5 opacity-80">
                             "{recipe.flavorDescription}"
@@ -381,8 +389,14 @@ const RecipeListScreen = ({
 
 const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories, setIngCategories }) => {
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [subCategoryFilter, setSubCategoryFilter] = useState('all');
   const [isAddingCat, setIsAddingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+
+  // Reset sub filter when main category changes
+  useEffect(() => {
+    setSubCategoryFilter('all');
+  }, [categoryFilter]);
 
   const handleAddCategory = () => {
     if (newCatName.trim()) {
@@ -390,7 +404,7 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
       setIngCategories([...ingCategories, { id: newId, label: newCatName.trim() }]);
       setNewCatName('');
       setIsAddingCat(false);
-      setCategoryFilter(newId);
+      setCategoryFilter(newId); // Switch to new category
     }
   };
 
@@ -403,8 +417,11 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
   };
 
   const filteredIngredients = ingredients.filter(i => {
-    if (categoryFilter === 'all') return true;
-    return i.type === categoryFilter;
+    if (categoryFilter !== 'all' && i.type !== categoryFilter) return false;
+    if (categoryFilter === 'alcohol' && subCategoryFilter !== 'all') {
+       return i.subType === subCategoryFilter;
+    }
+    return true;
   });
 
   return (
@@ -474,6 +491,28 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
             </button>
           )}
         </div>
+
+        {/* Sub-Category Filter (Only for Alcohol) */}
+        {categoryFilter === 'alcohol' && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 mt-2 no-scrollbar w-full animate-slide-up">
+             <span className="text-[10px] text-slate-500 font-bold shrink-0 uppercase tracking-wider pl-1">細項:</span>
+             <button 
+               onClick={()=>setSubCategoryFilter('all')} 
+               className={`whitespace-nowrap px-2 py-1 rounded text-[10px] font-medium transition-colors border ${subCategoryFilter === 'all' ? 'bg-slate-700 border-slate-600 text-white' : 'border-transparent text-slate-500'}`}
+             >
+               全部
+             </button>
+             {BASE_SPIRITS.map(spirit => (
+                 <button 
+                   key={spirit}
+                   onClick={()=>setSubCategoryFilter(spirit)} 
+                   className={`whitespace-nowrap px-2 py-1 rounded text-[10px] font-medium transition-colors border ${subCategoryFilter === spirit ? 'bg-slate-700 border-slate-600 text-white' : 'border-transparent text-slate-500'}`}
+                 >
+                   {spirit.split(' ')[0]}
+                 </button>
+             ))}
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-2 w-full">
@@ -486,7 +525,12 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
                <div className={`w-2 h-10 rounded-full ${['alcohol'].includes(ing.type) ? 'bg-purple-500/50' : ['soft'].includes(ing.type) ? 'bg-blue-500/50' : 'bg-slate-500/50'}`}></div>
                <div>
                  <div className="text-slate-200 font-medium">{ing.nameZh}</div>
-                 <div className="text-slate-500 text-xs">{ing.nameEn}</div>
+                 <div className="text-slate-500 text-xs">
+                   {ing.nameEn}
+                   {ing.type === 'alcohol' && ing.subType && (
+                     <span className="ml-2 text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">{ing.subType.split(' ')[0]}</span>
+                   )}
+                 </div>
                </div>
             </div>
             
@@ -874,6 +918,22 @@ const EditorSheet = ({
                    )}
                  </div>
              </div>
+             
+             {/* --- 這裡新增了 酒類專屬細項選擇器 --- */}
+             {item.type === 'alcohol' && (
+                 <div className="mt-2">
+                    <label className="text-xs text-slate-500 mb-1 block">酒類細項 (Sub-category)</label>
+                    <select 
+                        value={item.subType || ''} 
+                        onChange={e => setItem({...item, subType: e.target.value})}
+                        className="w-full bg-slate-800 rounded p-2 text-white border border-slate-700"
+                    >
+                        <option value="">-- 未分類 --</option>
+                        {BASE_SPIRITS.map(bs => <option key={bs} value={bs}>{bs}</option>)}
+                    </select>
+                 </div>
+             )}
+             
              {item.type === 'alcohol' && (
                <div className="mt-4 pt-4 border-t border-slate-800">
                  <label className="flex items-center gap-3 cursor-pointer group">
@@ -992,7 +1052,7 @@ const EditorSheet = ({
   );
 };
 
-// --- Viewer Overlay (Same as before) ---
+// --- Viewer Overlay ---
 const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete }) => {
   if (!item) return null;
   const stats = calculateRecipeStats(item, ingredients);
@@ -1331,7 +1391,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.7</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.8</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              
