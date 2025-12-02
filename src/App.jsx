@@ -25,7 +25,7 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus // ★★★ 修正：已正確補回 FilePlus ★★★
+  FilePlus // ★★★ 修正：已補回此圖標，解決白屏問題 ★★★
 } from 'lucide-react';
 
 // ==========================================
@@ -87,7 +87,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
   return { totalCost, finalAbv, suggestedPrice, costRate, margin, finalVol, price };
 };
 
-// ★★★ 安全渲染函式：防止 Object 錯誤導致白屏 ★★★
+// 安全字串轉換，防止 Objects are not valid 錯誤
 const safeString = (val) => {
   if (typeof val === 'string') return val;
   if (typeof val === 'number') return String(val);
@@ -1135,7 +1135,7 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
           {item.tags && item.tags.length > 0 && (
             <div className="flex gap-2 flex-wrap">
                {item.tags.map(tag => (
-                 <span key={tag} className="px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs text-slate-300 flex items-center gap-1">
+                 <span key={safeString(tag)} className="px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs text-slate-300 flex items-center gap-1">
                    <Tag size={12} className="text-amber-500"/> {safeString(tag)}
                  </span>
                ))}
@@ -1394,7 +1394,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.3 (Safe)</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.3 (Stable)</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              
