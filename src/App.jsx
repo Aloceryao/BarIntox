@@ -170,8 +170,10 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
 // --- Sub-Screens ---
 
 const SingleItemScreen = ({ ingredients, searchTerm }) => {
+  // Filter Logic: Must be alcohol AND have isSingle flag true (default to true if undefined for legacy data)
   const singles = ingredients.filter(i => 
     i.type === 'alcohol' && 
+    (i.isSingle !== false) && // 關鍵修正：預設顯示，只有明確設為 false 才隱藏
     (i.nameZh.includes(searchTerm) || i.nameEn.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -213,6 +215,13 @@ const SingleItemScreen = ({ ingredients, searchTerm }) => {
           </div>
         )
       })}
+      {singles.length === 0 && (
+        <div className="text-center py-10 text-slate-500 flex flex-col items-center">
+          <Wine size={48} className="mb-4 opacity-20"/>
+          <p>沒有符合的單品</p>
+          <p className="text-xs mt-2 opacity-50">請至「材料庫」將酒水勾選「列入單品」</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -235,7 +244,8 @@ const RecipeListScreen = ({
 
   const filtered = useMemo(() => {
     return recipes.filter(r => {
-      const matchCat = r.type === recipeCategoryFilter;
+      // 1. Category Match: 'all' shows everything, otherwise specific type
+      const matchCat = recipeCategoryFilter === 'all' || r.type === recipeCategoryFilter;
       const matchSearch = r.nameZh.includes(searchTerm) || r.nameEn.toLowerCase().includes(searchTerm.toLowerCase());
       const matchBase = filterBases.length === 0 || filterBases.includes(r.baseSpirit);
       const matchTags = filterTags.length === 0 || filterTags.every(t => r.tags?.includes(t));
@@ -271,8 +281,9 @@ const RecipeListScreen = ({
            )}
         </div>
 
-        <div className="flex px-4 border-b border-slate-800/50 w-full">
+        <div className="flex px-4 border-b border-slate-800/50 w-full overflow-x-auto no-scrollbar">
            {[
+             {id: 'all', label: '全部 All'},
              {id: 'classic', label: '經典 Classic'},
              {id: 'signature', label: '特調 Signature'},
              {id: 'single', label: '單品/純飲 Single'}
@@ -280,7 +291,7 @@ const RecipeListScreen = ({
              <button 
                key={cat.id}
                onClick={() => setRecipeCategoryFilter(cat.id)}
-               className={`flex-1 pb-3 text-sm font-medium border-b-2 transition-colors select-none ${recipeCategoryFilter === cat.id ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500'}`}
+               className={`flex-1 pb-3 px-4 text-sm font-medium border-b-2 transition-colors select-none whitespace-nowrap ${recipeCategoryFilter === cat.id ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500'}`}
              >
                {cat.label}
              </button>
@@ -872,6 +883,23 @@ const EditorSheet = ({
                    )}
                  </div>
              </div>
+             {item.type === 'alcohol' && (
+               <div className="mt-4 pt-4 border-t border-slate-800">
+                 <label className="flex items-center gap-3 cursor-pointer group">
+                   <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${item.isSingle !== false ? 'bg-amber-600 border-amber-600' : 'bg-transparent border-slate-600'}`}>
+                     {item.isSingle !== false && <Check size={14} className="text-white" />}
+                   </div>
+                   <input 
+                     type="checkbox" 
+                     className="hidden"
+                     checked={item.isSingle !== false}
+                     onChange={e => setItem({...item, isSingle: e.target.checked})}
+                   />
+                   <span className="text-sm text-slate-300 group-hover:text-white">列入單品菜單 (Available as Single)</span>
+                 </label>
+                 <p className="text-[10px] text-slate-500 mt-1 ml-8">取消勾選後，此材料將不會出現在「純飲/單品」頁面中。</p>
+               </div>
+             )}
              {item.id && (
                <button onClick={() => requestDelete(item.id, 'ingredient')} className="w-full py-3 text-rose-500 text-sm border border-rose-900/50 rounded mt-4">刪除此材料</button>
              )}
@@ -1156,7 +1184,6 @@ function MainAppContent() {
     }));
   }, [availableTechniques, availableTags, availableGlasses, ingCategories]);
 
-  // Dialog Helpers
   const closeDialog = () => setDialog({ ...dialog, isOpen: false });
   const showConfirm = (title, message, onConfirm) => setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm });
   const showAlert = (title, message) => setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: null });
@@ -1192,7 +1219,6 @@ function MainAppContent() {
       if (type === 'ingredient') {
         setEditingItem({ id: generateId(), nameZh: '', nameEn: '', type: 'alcohol', price: '', volume: 700, abv: 0, unit: 'ml' });
       } else {
-        // 確保新酒譜預設為 classic，並且 tags 是空陣列
         setEditingItem({ id: generateId(), nameZh: '', nameEn: '', type: 'classic', technique: '', tags: [], method: '', glass: '', customPrice: '', allergens: '', ingredients: [], history: [], image: '', baseSpirit: '', flavorDescription: '' });
       }
     }
@@ -1274,7 +1300,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.2</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.3</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer"><Upload className="text-emerald-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯入數據</div><div className="text-xs text-slate-500">從 JSON 還原</div></div><input type="file" className="hidden" accept=".json" onChange={(e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = (ev) => { const data = JSON.parse(ev.target.result); setIngredients(data.ingredients); setRecipes(data.recipes); showAlert('成功', '資料還原完成'); }; reader.readAsText(file); }}/></label>
