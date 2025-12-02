@@ -389,14 +389,8 @@ const RecipeListScreen = ({
 
 const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories, setIngCategories }) => {
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [subCategoryFilter, setSubCategoryFilter] = useState('all');
   const [isAddingCat, setIsAddingCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
-
-  // Reset sub filter when main category changes
-  useEffect(() => {
-    setSubCategoryFilter('all');
-  }, [categoryFilter]);
 
   const handleAddCategory = () => {
     if (newCatName.trim()) {
@@ -404,7 +398,7 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
       setIngCategories([...ingCategories, { id: newId, label: newCatName.trim() }]);
       setNewCatName('');
       setIsAddingCat(false);
-      setCategoryFilter(newId); // Switch to new category
+      setCategoryFilter(newId);
     }
   };
 
@@ -417,12 +411,17 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
   };
 
   const filteredIngredients = ingredients.filter(i => {
-    if (categoryFilter !== 'all' && i.type !== categoryFilter) return false;
-    if (categoryFilter === 'alcohol' && subCategoryFilter !== 'all') {
-       return i.subType === subCategoryFilter;
-    }
-    return true;
+    if (categoryFilter === 'all') return true;
+    return i.type === categoryFilter;
   });
+
+  // Local state for sub-category filtering in Alcohol view
+  const [subCategoryFilter, setSubCategoryFilter] = useState('all');
+
+  // Reset sub filter when main category changes
+  useEffect(() => {
+    setSubCategoryFilter('all');
+  }, [categoryFilter]);
 
   return (
     <div className="pb-24 animate-fade-in w-full">
