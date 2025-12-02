@@ -25,7 +25,7 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus // ★★★ 修正：已補回此圖標，解決白屏問題 ★★★
+  FilePlus
 } from 'lucide-react';
 
 // ==========================================
@@ -809,7 +809,8 @@ const EditorSheet = ({
   setAvailableGlasses,
   requestDelete,
   ingCategories,
-  setIngCategories
+  setIngCategories,
+  showAlert // Pass showAlert to notify user of errors
 }) => {
   if (!mode || !item) return null;
   const isRecipe = mode === 'recipe';
@@ -830,27 +831,48 @@ const EditorSheet = ({
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    // Simple file size check before processing (e.g., 5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      if (showAlert) showAlert('檔案過大', '請選擇小於 5MB 的圖片。');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_SIZE = 800;
-        if (width > height && width > MAX_SIZE) {
-          height *= MAX_SIZE / width;
-          width = MAX_SIZE;
-        } else if (height > MAX_SIZE) {
-          width *= MAX_SIZE / height;
-          height = MAX_SIZE;
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          // Reduce max size slightly to 600px to save space
+          const MAX_SIZE = 600; 
+          
+          if (width > height && width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          } else if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Use slightly lower quality (0.6) to prevent localStorage crash
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          setItem({...item, image: dataUrl});
+        } catch (err) {
+          console.error("Image processing error:", err);
+          if (showAlert) showAlert('錯誤', '圖片處理失敗，請嘗試其他圖片。');
         }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        setItem({...item, image: canvas.toDataURL('image/jpeg', 0.7)});
       };
+      img.onerror = () => {
+         if (showAlert) showAlert('錯誤', '無法讀取此圖片檔案。');
+      }
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
@@ -1225,36 +1247,58 @@ function MainAppContent() {
   const [dialog, setDialog] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null });
 
   useEffect(() => {
-    const savedIngredients = localStorage.getItem('bar_ingredients_v3');
-    const savedRecipes = localStorage.getItem('bar_recipes_v3');
-    const savedPrefs = localStorage.getItem('bar_preferences_v3');
+    try {
+      const savedIngredients = localStorage.getItem('bar_ingredients_v3');
+      const savedRecipes = localStorage.getItem('bar_recipes_v3');
+      const savedPrefs = localStorage.getItem('bar_preferences_v3');
 
-    if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
-    if (savedRecipes) setRecipes(JSON.parse(savedRecipes));
-    if (savedPrefs) {
-      const prefs = JSON.parse(savedPrefs);
-      if (prefs.techniques) setAvailableTechniques(prefs.techniques);
-      if (prefs.tags) setAvailableTags(prefs.tags);
-      if (prefs.glasses) setAvailableGlasses(prefs.glasses);
-      if (prefs.ingCategories) setIngCategories(prefs.ingCategories);
+      if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
+      if (savedRecipes) setRecipes(JSON.parse(savedRecipes));
+      if (savedPrefs) {
+        const prefs = JSON.parse(savedPrefs);
+        if (prefs.techniques) setAvailableTechniques(prefs.techniques);
+        if (prefs.tags) setAvailableTags(prefs.tags);
+        if (prefs.glasses) setAvailableGlasses(prefs.glasses);
+        if (prefs.ingCategories) setIngCategories(prefs.ingCategories);
+      }
+    } catch (e) {
+      console.error("Failed to load initial data", e);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('bar_ingredients_v3', JSON.stringify(ingredients));
+    try {
+      localStorage.setItem('bar_ingredients_v3', JSON.stringify(ingredients));
+    } catch (e) {
+      console.error("Storage failed for ingredients", e);
+      if (e.name === 'QuotaExceededError') {
+         showAlert("儲存失敗", "儲存空間已滿，請刪除部分項目或圖片。");
+      }
+    }
   }, [ingredients]);
 
   useEffect(() => {
-    localStorage.setItem('bar_recipes_v3', JSON.stringify(recipes));
+    try {
+      localStorage.setItem('bar_recipes_v3', JSON.stringify(recipes));
+    } catch (e) {
+      console.error("Storage failed for recipes", e);
+      if (e.name === 'QuotaExceededError') {
+         // Debounced alert or specific UI handling could go here, 
+         // but showAlert needs to be triggered carefully inside effects
+         // For now, logging and potentially setting a transient error state is safer
+      }
+    }
   }, [recipes]);
 
   useEffect(() => {
-    localStorage.setItem('bar_preferences_v3', JSON.stringify({
-      techniques: availableTechniques,
-      tags: availableTags,
-      glasses: availableGlasses,
-      ingCategories: ingCategories
-    }));
+    try {
+      localStorage.setItem('bar_preferences_v3', JSON.stringify({
+        techniques: availableTechniques,
+        tags: availableTags,
+        glasses: availableGlasses,
+        ingCategories: ingCategories
+      }));
+    } catch (e) {}
   }, [availableTechniques, availableTags, availableGlasses, ingCategories]);
 
   const closeDialog = () => setDialog({ ...dialog, isOpen: false });
@@ -1337,6 +1381,10 @@ function MainAppContent() {
 
   const saveItem = () => {
     if (!editingItem.nameZh) return showAlert('錯誤', '請輸入名稱');
+    
+    // Check quota before saving state update, though strictly the error happens in useEffect
+    // We can't easily try-catch the setState, but we can catch the useEffect error.
+    
     if (editorMode === 'ingredient') {
       const newItem = { ...editingItem, price: parseFloat(editingItem.price) || 0, volume: parseFloat(editingItem.volume) || 0 };
       setIngredients(prev => {
@@ -1442,7 +1490,7 @@ function MainAppContent() {
         </div>
       </nav>
 
-      <EditorSheet mode={editorMode} item={editingItem} setItem={setEditingItem} onSave={saveItem} onClose={() => setEditorMode(null)} ingredients={ingredients} availableTechniques={availableTechniques} setAvailableTechniques={setAvailableTechniques} availableTags={availableTags} setAvailableTags={setAvailableTags} availableGlasses={availableGlasses} setAvailableGlasses={setAvailableGlasses} requestDelete={requestDelete} ingCategories={ingCategories} setIngCategories={setIngCategories} />
+      <EditorSheet mode={editorMode} item={editingItem} setItem={setEditingItem} onSave={saveItem} onClose={() => setEditorMode(null)} ingredients={ingredients} availableTechniques={availableTechniques} setAvailableTechniques={setAvailableTechniques} availableTags={availableTags} setAvailableTags={setAvailableTags} availableGlasses={availableGlasses} setAvailableGlasses={setAvailableGlasses} requestDelete={requestDelete} ingCategories={ingCategories} setIngCategories={setIngCategories} showAlert={showAlert} />
       <ViewerOverlay item={viewingItem} onClose={() => setViewingItem(null)} ingredients={ingredients} startEdit={startEdit} requestDelete={requestDelete} />
     </div>
   );
