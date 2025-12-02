@@ -25,7 +25,8 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus
+  FilePlus,
+  Globe // 新增 Globe 圖示
 } from 'lucide-react';
 
 // ==========================================
@@ -364,7 +365,22 @@ const RecipeListScreen = ({
                       <div>
                         <div className="flex justify-between items-start">
                           <h3 className="text-lg font-bold text-white leading-tight font-serif tracking-wide truncate pr-2">{safeString(recipe.nameZh)}</h3>
-                          <div className="text-amber-400 font-bold text-lg font-mono">${stats.price}</div>
+                          
+                          {/* 價格與搜尋按鈕區域 */}
+                          <div className="flex flex-col items-end gap-1">
+                             <div className="text-amber-400 font-bold text-lg font-mono leading-none">${stats.price}</div>
+                             <button 
+                               onClick={(e) => {
+                                 e.stopPropagation(); // 阻止開啟詳情頁
+                                 const q = encodeURIComponent(`${recipe.nameZh} ${recipe.nameEn} 雞尾酒 調酒`);
+                                 window.open(`https://www.google.com/search?q=${q}`, '_blank');
+                               }}
+                               className="text-slate-500 hover:text-blue-400 transition-colors p-1 -mr-1"
+                               title="搜尋 Google"
+                             >
+                               <Globe size={14} />
+                             </button>
+                          </div>
                         </div>
                         <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{safeString(recipe.nameEn)}</p>
                         
