@@ -24,7 +24,9 @@ import {
   DollarSign,
   Filter,
   Layers,
-  Quote
+  Quote,
+  FilePlus,
+  FileWarning
 } from 'lucide-react';
 
 // --- Constants & Data ---
@@ -83,6 +85,9 @@ const calculateRecipeStats = (recipe, ingredients) => {
 
   return { totalCost, finalAbv, suggestedPrice, costRate, margin, finalVol, price };
 };
+
+// Helper to normalize strings for comparison (remove spaces, lowercase)
+const normalizeStr = (str) => str ? str.toLowerCase().replace(/\s+/g, '') : '';
 
 // --- UI Components ---
 
@@ -349,6 +354,7 @@ const RecipeListScreen = ({
                         </div>
                         <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{recipe.nameEn}</p>
                         
+                        {/* Flavor Description Preview */}
                         {recipe.flavorDescription && (
                           <div className="text-[10px] text-slate-500 line-clamp-1 italic mb-1.5 opacity-80">
                             "{recipe.flavorDescription}"
@@ -396,7 +402,7 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
       setIngCategories([...ingCategories, { id: newId, label: newCatName.trim() }]);
       setNewCatName('');
       setIsAddingCat(false);
-      setCategoryFilter(newId); // Switch to new category
+      setCategoryFilter(newId);
     }
   };
 
@@ -1208,6 +1214,46 @@ function MainAppContent() {
     }
   };
 
+  const handleImport = (e, mode) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (mode === 'overwrite') {
+          setIngredients(data.ingredients || []);
+          setRecipes(data.recipes || []);
+          showAlert('還原成功', '資料已完全覆蓋');
+        } else {
+          // Smart Merge with Name Matching
+          setIngredients(prev => {
+            const newItems = (data.ingredients || []).filter(newI => {
+              // 1. Check ID conflict
+              const idExists = prev.some(oldI => oldI.id === newI.id);
+              // 2. Check Name conflict (Smart Match)
+              const nameExists = prev.some(oldI => normalizeStr(oldI.nameZh) === normalizeStr(newI.nameZh) || (oldI.nameEn && normalizeStr(oldI.nameEn) === normalizeStr(newI.nameEn)));
+              return !idExists && !nameExists;
+            });
+            return [...prev, ...newItems];
+          });
+          setRecipes(prev => {
+            const newItems = (data.recipes || []).filter(newI => {
+              const idExists = prev.some(oldI => oldI.id === newI.id);
+              const nameExists = prev.some(oldI => normalizeStr(oldI.nameZh) === normalizeStr(newI.nameZh));
+              return !idExists && !nameExists;
+            });
+            return [...prev, ...newItems];
+          });
+          showAlert('合併成功', '新資料已加入，重複項目已自動跳過');
+        }
+      } catch (err) {
+        showAlert('錯誤', '檔案格式不正確');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const startEdit = (type, item = null) => {
     setEditorMode(type);
     if (item) {
@@ -1275,19 +1321,16 @@ function MainAppContent() {
           text-align: left !important;
           display: block !important;
         }
-        /* Scrollbar hiding */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        /* Animations */
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes scale-in { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.3s ease-out; }
         .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         .animate-scale-in { animation: scale-in 0.2s ease-out; }
-        /* Safe Areas */
         .safe-top { padding-top: env(safe-area-inset-top); }
         .pt-safe { padding-top: env(safe-area-inset-top); }
         .mt-safe { margin-top: env(safe-area-inset-top); }
@@ -1303,10 +1346,22 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.4</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v6.6</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
-             <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer"><Upload className="text-emerald-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯入數據</div><div className="text-xs text-slate-500">從 JSON 還原</div></div><input type="file" className="hidden" accept=".json" onChange={(e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = (ev) => { const data = JSON.parse(ev.target.result); setIngredients(data.ingredients); setRecipes(data.recipes); showAlert('成功', '資料還原完成'); }; reader.readAsText(file); }}/></label>
+             
+             <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer">
+               <div className="p-2 bg-emerald-900/30 text-emerald-400 rounded-lg"><FilePlus size={24}/></div>
+               <div className="text-left flex-1"><div className="text-emerald-400 font-bold">智慧合併 (Merge)</div><div className="text-xs text-slate-500">保留現有資料，加入新資料</div></div>
+               <input type="file" className="hidden" accept=".json" onChange={(e) => handleImport(e, 'merge')}/>
+             </label>
+
+             <label className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition cursor-pointer">
+               <div className="p-2 bg-amber-900/30 text-amber-400 rounded-lg"><Upload size={24}/></div>
+               <div className="text-left flex-1"><div className="text-amber-400 font-bold">覆蓋還原 (Overwrite)</div><div className="text-xs text-slate-500">清空現有資料，完全還原</div></div>
+               <input type="file" className="hidden" accept=".json" onChange={(e) => handleImport(e, 'overwrite')}/>
+             </label>
+
              <button onClick={() => { showConfirm('重置系統', '警告：此操作將刪除所有資料且無法還原。確定要繼續嗎？', () => { localStorage.clear(); location.reload(); }); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-rose-900/20 transition group"><RefreshCcw className="text-rose-500 group-hover:rotate-180 transition-transform duration-500"/><div className="text-left"><div className="text-rose-500 font-bold">重置系統</div><div className="text-xs text-rose-500/50">刪除所有資料</div></div></button>
            </div>
          </div>
