@@ -25,7 +25,7 @@ import {
   Filter,
   Layers,
   Quote,
-  FilePlus // Added FilePlus to imports
+  FileText // Replaced FilePlus with FileText or Plus for safety
 } from 'lucide-react';
 
 // ==========================================
@@ -51,7 +51,6 @@ const DEFAULT_ING_CATEGORIES = [
   { id: 'other', label: '其他' }
 ];
 
-// 酒精濃度與成本計算核心 (已移除融水機制)
 const calculateRecipeStats = (recipe, ingredients) => {
   let totalCost = 0;
   let totalVol = 0;
@@ -66,12 +65,9 @@ const calculateRecipeStats = (recipe, ingredients) => {
         
         totalCost += costPerUnit * amount;
         
-        // 只有單位是 ml/oz 且非"其他"類別，才計算體積與酒精
-        // 這裡假設 unit 不存在時預設為 ml
         const isLiquid = ing.type !== 'other' && (!ing.unit || ing.unit === 'ml' || ing.unit === 'oz');
         
         if (isLiquid) {
-          // 簡單處理: 假設 oz = 30ml (粗略), 若系統統一用 ml 則直接加
           const volInMl = ing.unit === 'oz' ? amount * 30 : amount;
           totalVol += volInMl;
           totalAlcoholVol += volInMl * (ing.abv / 100);
@@ -80,10 +76,7 @@ const calculateRecipeStats = (recipe, ingredients) => {
     });
   }
 
-  // 修正：直接使用原始體積，不加融水
   const finalVol = totalVol; 
-  
-  // 避免除以零
   const finalAbv = finalVol > 0 ? (totalAlcoholVol / finalVol) * 100 : 0;
   
   const suggestedPrice = totalCost > 0 ? Math.ceil(totalCost / TARGET_COST_RATE / 10) * 10 : 0;
@@ -92,6 +85,12 @@ const calculateRecipeStats = (recipe, ingredients) => {
   const margin = price - totalCost;
 
   return { totalCost, finalAbv, suggestedPrice, costRate, margin, finalVol, price };
+};
+
+// 安全的文字渲染 helper
+const safeRender = (value) => {
+  if (typeof value === 'object' && value !== null) return '';
+  return value;
 };
 
 // ==========================================
@@ -148,20 +147,23 @@ const ChipSelector = ({ options, selected, onSelect, onAdd, single = false, titl
         <label className="text-xs text-slate-500 font-bold uppercase select-none">{title}</label>
       </div>
       <div className="flex flex-wrap gap-2">
-        {options.map(opt => (
-          <button
-            key={opt}
-            onClick={() => handleSelect(opt)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border select-none ${
-              isSelected(opt)
-                ? 'bg-amber-600 border-amber-600 text-white shadow-lg shadow-amber-900/20'
-                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
-            }`}
-          >
-            {typeof opt === 'string' ? opt.split(' (')[0] : opt}
-            {isSelected(opt) && <Check size={12} className="inline ml-1" />}
-          </button>
-        ))}
+        {options.map(opt => {
+          const displayOpt = typeof opt === 'string' ? opt.split(' (')[0] : String(opt);
+          return (
+            <button
+              key={typeof opt === 'string' ? opt : Math.random()}
+              onClick={() => handleSelect(opt)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border select-none ${
+                isSelected(opt)
+                  ? 'bg-amber-600 border-amber-600 text-white shadow-lg shadow-amber-900/20'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+              }`}
+            >
+              {displayOpt}
+              {isSelected(opt) && <Check size={12} className="inline ml-1" />}
+            </button>
+          );
+        })}
         {onAdd && (
           <div className="flex items-center bg-slate-800 rounded-full border border-slate-700 px-2">
             <input 
@@ -187,7 +189,7 @@ const SingleItemScreen = ({ ingredients, searchTerm }) => {
   const singles = ingredients.filter(i => 
     i.type === 'alcohol' && 
     (i.isSingle !== false) && 
-    (i.nameZh.includes(searchTerm) || i.nameEn.toLowerCase().includes(searchTerm.toLowerCase()))
+    (i.nameZh && i.nameZh.includes(searchTerm) || i.nameEn && i.nameEn.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -203,8 +205,8 @@ const SingleItemScreen = ({ ingredients, searchTerm }) => {
           <div key={ing.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700/50 w-full">
             <div className="flex justify-between items-start mb-3">
               <div>
-                <div className="text-slate-100 font-bold">{ing.nameZh}</div>
-                <div className="text-slate-500 text-xs">{ing.nameEn}</div>
+                <div className="text-slate-100 font-bold">{safeRender(ing.nameZh)}</div>
+                <div className="text-slate-500 text-xs">{safeRender(ing.nameEn)}</div>
               </div>
               <div className="text-slate-400 text-xs text-right">
                 進貨 ${ing.price}<br/>{ing.volume}{ing.unit || 'ml'}
@@ -258,7 +260,7 @@ const RecipeListScreen = ({
   const filtered = useMemo(() => {
     return recipes.filter(r => {
       const matchCat = recipeCategoryFilter === 'all' || r.type === recipeCategoryFilter;
-      const matchSearch = r.nameZh.includes(searchTerm) || r.nameEn.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = (r.nameZh && r.nameZh.includes(searchTerm)) || (r.nameEn && r.nameEn.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchBase = filterBases.length === 0 || filterBases.includes(r.baseSpirit);
       const matchTags = filterTags.length === 0 || filterTags.every(t => r.tags?.includes(t));
       return matchCat && matchSearch && matchBase && matchTags;
@@ -343,11 +345,13 @@ const RecipeListScreen = ({
            filtered.length > 0 ? (
              filtered.map(recipe => {
                const stats = calculateRecipeStats(recipe, ingredients);
+               const displayBase = typeof recipe.baseSpirit === 'string' ? recipe.baseSpirit.split(' ')[0] : '';
+               
                return (
                  <div key={recipe.id} onClick={() => setViewingItem(recipe)} className="group bg-slate-800 rounded-2xl overflow-hidden shadow-lg border border-slate-800 hover:border-slate-700 transition-all active:scale-[0.98] flex flex-row h-36 w-full">
                    <div className="w-32 h-full relative shrink-0 bg-slate-900">
                       {recipe.image ? (
-                        <img src={recipe.image} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt={recipe.nameZh} />
+                        <img src={recipe.image} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt={safeRender(recipe.nameZh)} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-700">
                           <Wine size={32} opacity={0.3} />
@@ -358,21 +362,21 @@ const RecipeListScreen = ({
                    <div className="flex-1 p-3 flex flex-col justify-between overflow-hidden">
                       <div>
                         <div className="flex justify-between items-start">
-                          <h3 className="text-lg font-bold text-white leading-tight font-serif tracking-wide truncate pr-2">{recipe.nameZh}</h3>
+                          <h3 className="text-lg font-bold text-white leading-tight font-serif tracking-wide truncate pr-2">{safeRender(recipe.nameZh)}</h3>
                           <div className="text-amber-400 font-bold text-lg font-mono">${stats.price}</div>
                         </div>
-                        <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{recipe.nameEn}</p>
+                        <p className="text-slate-400 text-xs font-medium tracking-wider uppercase truncate opacity-80 mb-1">{safeRender(recipe.nameEn)}</p>
                         
                         {recipe.flavorDescription && (
                           <div className="text-[10px] text-slate-500 line-clamp-1 italic mb-1.5 opacity-80">
-                            "{recipe.flavorDescription}"
+                            "{safeRender(recipe.flavorDescription)}"
                           </div>
                         )}
 
                         <div className="flex gap-1 flex-wrap">
-                          {recipe.baseSpirit && <Badge color="blue" className="scale-90 origin-left">{recipe.baseSpirit.split(' ')[0]}</Badge>}
+                          {recipe.baseSpirit && <Badge color="blue" className="scale-90 origin-left">{displayBase}</Badge>}
                           {recipe.tags?.slice(0,2).map(tag => (
-                            <span key={tag} className="text-[10px] text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded">{tag.split(' ')[0]}</span>
+                            <span key={tag} className="text-[10px] text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded">{typeof tag === 'string' ? tag.split(' ')[0] : tag}</span>
                           ))}
                         </div>
                       </div>
@@ -519,7 +523,7 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
                    onClick={()=>setSubCategoryFilter(spirit)} 
                    className={`whitespace-nowrap px-2 py-1 rounded text-[10px] font-medium transition-colors border ${subCategoryFilter === spirit ? 'bg-slate-700 border-slate-600 text-white' : 'border-transparent text-slate-500'}`}
                  >
-                   {spirit.split(' ')[0]}
+                   {typeof spirit === 'string' ? spirit.split(' ')[0] : spirit}
                  </button>
              ))}
           </div>
@@ -535,11 +539,11 @@ const InventoryScreen = ({ ingredients, startEdit, requestDelete, ingCategories,
             >
                <div className={`w-2 h-10 rounded-full ${['alcohol'].includes(ing.type) ? 'bg-purple-500/50' : ['soft'].includes(ing.type) ? 'bg-blue-500/50' : 'bg-slate-500/50'}`}></div>
                <div>
-                 <div className="text-slate-200 font-medium">{ing.nameZh}</div>
+                 <div className="text-slate-200 font-medium">{safeRender(ing.nameZh)}</div>
                  <div className="text-slate-500 text-xs">
-                   {ing.nameEn}
+                   {safeRender(ing.nameEn)}
                    {ing.type === 'alcohol' && ing.subType && (
-                     <span className="ml-2 text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">{ing.subType.split(' ')[0]}</span>
+                     <span className="ml-2 text-[10px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-400">{typeof ing.subType === 'string' ? ing.subType.split(' ')[0] : ing.subType}</span>
                    )}
                  </div>
                </div>
@@ -589,7 +593,6 @@ const QuickCalcScreen = ({ ingredients }) => {
   const [ingSearch, setIngSearch] = useState('');
   
   // --- Single Calculations ---
-  // 使用 parseFloat 確保字串被正確轉換為數字
   const priceNum = parseFloat(p) || 0;
   const volNum = parseFloat(v) || 700;
   const costPerMl = priceNum / volNum;
@@ -682,7 +685,6 @@ const QuickCalcScreen = ({ ingredients }) => {
                    { label: `整瓶 (${volNum}ml)`, vol: volNum }
                  ].map(row => {
                    const cost = costPerMl * row.vol;
-                   // Calculate suggested price: Cost / Rate% rounded to nearest 10
                    const priceA = Math.ceil(cost / (rateA/100) / 10) * 10;
                    const priceB = Math.ceil(cost / (rateB/100) / 10) * 10;
                    
@@ -713,7 +715,7 @@ const QuickCalcScreen = ({ ingredients }) => {
                     const ing = ingredients.find(i => i.id === item.id);
                     return (
                       <div key={idx} className="flex justify-between items-center bg-slate-900/50 p-2 rounded">
-                         <div className="text-sm text-slate-300">{ing?.nameZh}</div>
+                         <div className="text-sm text-slate-300">{safeRender(ing?.nameZh)}</div>
                          <div className="flex items-center gap-2">
                            <input 
                              type="number" 
@@ -725,7 +727,7 @@ const QuickCalcScreen = ({ ingredients }) => {
                                setDraftIngs(newDraft);
                              }}
                            />
-                           <span className="text-xs text-slate-500 w-6">{ing?.unit || 'ml'}</span>
+                           <span className="text-xs text-slate-500 w-6">{safeRender(ing?.unit || 'ml')}</span>
                            <button onClick={() => setDraftIngs(draftIngs.filter((_,i)=>i!==idx))}><X size={14} className="text-slate-500"/></button>
                          </div>
                       </div>
@@ -764,8 +766,8 @@ const QuickCalcScreen = ({ ingredients }) => {
                 <div className="max-h-60 overflow-y-auto space-y-1 custom-scrollbar">
                    {ingredients
                      .filter(ing => 
-                        ing.nameZh.includes(ingSearch) || 
-                        ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase())
+                        (ing.nameZh && ing.nameZh.includes(ingSearch)) || 
+                        (ing.nameEn && ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase()))
                      )
                      .map(ing => (
                      <button 
@@ -773,7 +775,7 @@ const QuickCalcScreen = ({ ingredients }) => {
                        onClick={() => setDraftIngs([...draftIngs, { id: ing.id, amount: 30 }])}
                        className="w-full text-left p-2 hover:bg-slate-700 rounded flex justify-between group"
                      >
-                       <span className="text-slate-300 text-sm">{ing.nameZh}</span>
+                       <span className="text-slate-300 text-sm">{safeRender(ing.nameZh)}</span>
                        <Plus size={14} className="text-slate-500 group-hover:text-amber-500"/>
                      </button>
                    ))}
@@ -883,11 +885,11 @@ const EditorSheet = ({
         <div className="space-y-4">
            <div>
              <label className="text-xs text-slate-500 font-bold uppercase ml-1">中文名稱</label>
-             <input value={item.nameZh} onChange={e => setItem({...item, nameZh: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-xl text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none" placeholder="例如: 內格羅尼" />
+             <input value={item.nameZh || ''} onChange={e => setItem({...item, nameZh: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-xl text-slate-100 placeholder-slate-600 focus:border-amber-500 focus:outline-none" placeholder="例如: 內格羅尼" />
            </div>
            <div>
              <label className="text-xs text-slate-500 font-bold uppercase ml-1">英文名稱</label>
-             <input value={item.nameEn} onChange={e => setItem({...item, nameEn: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-lg text-slate-400 placeholder-slate-700 focus:border-slate-500 focus:outline-none font-serif italic" placeholder="e.g. Negroni" />
+             <input value={item.nameEn || ''} onChange={e => setItem({...item, nameEn: e.target.value})} className="w-full bg-transparent border-b border-slate-700 py-2 text-lg text-slate-400 placeholder-slate-700 focus:border-slate-500 focus:outline-none font-serif italic" placeholder="e.g. Negroni" />
            </div>
         </div>
 
@@ -1020,20 +1022,17 @@ const EditorSheet = ({
                   if(!refIng) return null;
                   return (
                     <div key={idx} className="flex items-center gap-3 bg-slate-800/50 p-2 rounded border border-slate-800">
-                       <div className="flex-1 text-slate-300 text-sm">{refIng.nameZh}</div>
+                       <div className="flex-1 text-slate-300 text-sm">{safeRender(refIng.nameZh)}</div>
                        <input type="number" className="w-16 bg-slate-900 border border-slate-700 rounded text-center text-amber-400 p-1" value={ingItem.amount} onChange={e => { const newIngs = [...item.ingredients]; newIngs[idx].amount = e.target.value; setItem({...item, ingredients: newIngs}); }} />
-                       <span className="text-xs text-slate-600 w-6">{refIng.unit || 'ml'}</span>
+                       <span className="text-xs text-slate-600 w-6">{safeRender(refIng.unit || 'ml')}</span>
                        <button onClick={() => { const newIngs = item.ingredients.filter((_, i) => i !== idx); setItem({...item, ingredients: newIngs}); }} className="text-slate-600 hover:text-rose-500"><X size={16}/></button>
                     </div>
                   )
                 })}
               </div>
               
-              {/* Ingredient Picker for Draft with Search */}
               <div className="bg-slate-800 rounded-lg border border-slate-700 p-2 mt-2">
                  <div className="text-xs text-slate-500 mb-2 font-bold uppercase">加入材料</div>
-                 
-                 {/* Search Input */}
                  <div className="relative mb-2">
                    <Search className="absolute left-2 top-2 text-slate-500 w-4 h-4" />
                    <input 
@@ -1043,12 +1042,11 @@ const EditorSheet = ({
                      onChange={e => setIngSearch(e.target.value)}
                    />
                  </div>
-
                  <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
                    {ingredients
                      .filter(ing => 
-                        ing.nameZh.includes(ingSearch) || 
-                        ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase())
+                        (ing.nameZh && ing.nameZh.includes(ingSearch)) || 
+                        (ing.nameEn && ing.nameEn.toLowerCase().includes(ingSearch.toLowerCase()))
                      )
                      .map(ing => (
                      <button 
@@ -1056,7 +1054,7 @@ const EditorSheet = ({
                        onClick={() => setItem({...item, ingredients: [...item.ingredients, { id: ing.id, amount: 30 }]})}
                        className="w-full text-left p-2 hover:bg-slate-700 rounded flex justify-between group"
                      >
-                       <span className="text-slate-300 text-sm">{ing.nameZh}</span>
+                       <span className="text-slate-300 text-sm">{safeRender(ing.nameZh)}</span>
                        <Plus size={14} className="text-slate-500 group-hover:text-amber-500" />
                      </button>
                    ))}
@@ -1102,11 +1100,11 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
          </button>
          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/30"></div>
          <div className="absolute bottom-0 left-0 right-0 p-6">
-            <h1 className="text-4xl font-serif text-white font-bold mb-1 shadow-black drop-shadow-lg">{item.nameZh}</h1>
+            <h1 className="text-4xl font-serif text-white font-bold mb-1 shadow-black drop-shadow-lg">{safeRender(item.nameZh)}</h1>
             <div className="flex items-center gap-2">
-               <p className="text-slate-300 text-lg italic font-serif opacity-90">{item.nameEn}</p>
-               {item.baseSpirit && <Badge color="blue" className="shadow-lg">{item.baseSpirit.split(' ')[0]}</Badge>}
-               {item.technique && <Badge color="purple" className="shadow-lg">{item.technique}</Badge>}
+               <p className="text-slate-300 text-lg italic font-serif opacity-90">{safeRender(item.nameEn)}</p>
+               {item.baseSpirit && <Badge color="blue" className="shadow-lg">{safeRender(item.baseSpirit.split(' ')[0])}</Badge>}
+               {item.technique && <Badge color="purple" className="shadow-lg">{safeRender(item.technique)}</Badge>}
             </div>
          </div>
        </div>
@@ -1133,7 +1131,7 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
             <div className="relative bg-slate-900/50 p-6 rounded-xl border border-slate-800">
               <Quote className="absolute top-4 left-4 text-slate-700 w-6 h-6" />
               <div className="italic text-slate-300 text-sm leading-relaxed pl-6">
-                {item.flavorDescription}
+                {safeRender(item.flavorDescription)}
               </div>
             </div>
           )}
@@ -1142,7 +1140,7 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
             <div className="flex gap-2 flex-wrap">
                {item.tags.map(tag => (
                  <span key={tag} className="px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs text-slate-300 flex items-center gap-1">
-                   <Tag size={12} className="text-amber-500"/> {tag}
+                   <Tag size={12} className="text-amber-500"/> {safeRender(tag)}
                  </span>
                ))}
             </div>
@@ -1157,8 +1155,8 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
                 const ing = ingredients.find(i => i.id === ingItem.id);
                 return ing ? (
                   <li key={idx} className="flex justify-between items-center text-slate-300 border-b border-slate-800/50 pb-2">
-                    <span>{ing.nameZh}</span>
-                    <span className="font-mono text-slate-500">{ingItem.amount}{ing.unit || 'ml'}</span>
+                    <span>{safeRender(ing.nameZh)}</span>
+                    <span className="font-mono text-slate-500">{ingItem.amount}{safeRender(ing.unit || 'ml')}</span>
                   </li>
                 ) : null;
               })}
@@ -1174,12 +1172,12 @@ const ViewerOverlay = ({ item, onClose, ingredients, startEdit, requestDelete })
                <Settings size={14}/> 製作說明 (Method)
              </h3>
              <div className="text-slate-300 leading-relaxed whitespace-pre-wrap font-serif">
-               {item.method || "無製作說明"}
+               {safeRender(item.method || "無製作說明")}
              </div>
              <div className="mt-4 flex gap-2">
-                <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded">杯型: {item.glass}</span>
+                <span className="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded">杯型: {safeRender(item.glass)}</span>
                 {item.allergens && (
-                  <span className="text-xs bg-rose-900/20 text-rose-500 px-2 py-1 rounded border border-rose-900/50">警示: {item.allergens}</span>
+                  <span className="text-xs bg-rose-900/20 text-rose-500 px-2 py-1 rounded border border-rose-900/50">警示: {safeRender(item.allergens)}</span>
                 )}
              </div>
           </div>
@@ -1402,7 +1400,7 @@ function MainAppContent() {
       {activeTab === 'tools' && (
          <div className="p-6 text-center space-y-6 pt-20 w-full">
            <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center border border-slate-700 shadow-lg shadow-amber-900/10"><Wine size={32} className="text-amber-500"/></div>
-           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.2</h2>
+           <h2 className="text-xl font-serif text-slate-200">Bar Manager v7.2 (Stable)</h2>
            <div className="space-y-3">
              <button onClick={() => { const data = JSON.stringify({ingredients, recipes}); const blob = new Blob([data], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `bar_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); }} className="w-full bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center gap-4 hover:bg-slate-700 transition"><Download className="text-blue-400"/><div className="text-left"><div className="text-slate-200 font-bold">匯出數據</div><div className="text-xs text-slate-500">備份到手機</div></div></button>
              
